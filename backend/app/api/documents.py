@@ -1,7 +1,7 @@
 import os
 import uuid
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -17,6 +17,7 @@ router = APIRouter()
 
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_admin)
@@ -72,8 +73,8 @@ async def upload_document(
     db.commit()
     db.refresh(doc_record)
     
-    # 5. Delegate processing queue task
-    process_document_task.delay(str(doc_record.id))
+    # 5. Delegate processing queue task (FastAPI in-process task)
+    background_tasks.add_task(process_document_task, str(doc_record.id))
     
     return doc_record
 
