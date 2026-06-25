@@ -8,7 +8,6 @@ from pypdf import PdfReader
 
 from llama_index.core import Document as LlamaDocument, VectorStoreIndex, StorageContext
 from llama_index.core.node_parser import SentenceSplitter
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 
 from app.core.config import settings
@@ -16,21 +15,64 @@ from app.core.config import settings
 # Initialize Qdrant Client
 qdrant_client_instance = qdrant_client.QdrantClient(url=settings.QDRANT_URL)
 
-# Setup Embeddings locally
-embed_model = HuggingFaceEmbedding(
-    model_name="BAAI/bge-small-en-v1.5",
-    cache_folder="storage/embedding_cache"
-)
+# Setup Embeddings lazily to avoid heavy torch/HuggingFace imports on startup
+_embed_model = None
+_vector_size = 384
+_collection_name = "document_chunks"
+
+def get_embed_config():
+    global _embed_model, _vector_size, _collection_name
+    if _embed_model is not None:
+        return _embed_model, _vector_size, _collection_name
+        
+    provider = settings.LLM_PROVIDER.lower()
+    
+    if provider == "gemini" and settings.GEMINI_API_KEY:
+        from llama_index.embeddings.gemini import GeminiEmbedding
+        _embed_model = GeminiEmbedding(
+            api_key=settings.GEMINI_API_KEY,
+            model_name="models/text-embedding-004"
+        )
+        _vector_size = 768
+        _collection_name = "document_chunks_gemini"
+        
+    elif provider == "openai" and settings.OPENAI_API_KEY:
+        from llama_index.embeddings.openai import OpenAIEmbedding
+        _embed_model = OpenAIEmbedding(
+            api_key=settings.OPENAI_API_KEY,
+            model_name="text-embedding-3-small"
+        )
+        _vector_size = 1536
+        _collection_name = "document_chunks_openai"
+        
+    else:
+        if provider == "mock":
+            from llama_index.core.embeddings.mock import MockEmbedding
+            _embed_model = MockEmbedding(co_dimension=384)
+            _vector_size = 384
+            _collection_name = "document_chunks_mock"
+        else:
+            print("Warning: Falling back to local HuggingFaceEmbedding. This requires >512MB RAM.")
+            from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+            _embed_model = HuggingFaceEmbedding(
+                model_name="BAAI/bge-small-en-v1.5",
+                cache_folder="storage/embedding_cache"
+            )
+            _vector_size = 384
+            _collection_name = "document_chunks_huggingface"
+            
+    return _embed_model, _vector_size, _collection_name
 
 # Initialize Qdrant Collection
 def init_qdrant():
+    embed_model, size, collection_name = get_embed_config()
     try:
-        if not qdrant_client_instance.collection_exists(collection_name="document_chunks"):
+        if not qdrant_client_instance.collection_exists(collection_name=collection_name):
             qdrant_client_instance.create_collection(
-                collection_name="document_chunks",
-                vectors_config=VectorParams(size=384, distance=Distance.COSINE),
+                collection_name=collection_name,
+                vectors_config=VectorParams(size=size, distance=Distance.COSINE),
             )
-            print("Created Qdrant collection: document_chunks")
+            print(f"Created Qdrant collection: {collection_name} (Size: {size})")
     except Exception as e:
         print(f"Error initializing Qdrant: {e}")
 
@@ -88,6 +130,7 @@ def extract_text_from_file(file_path: str, file_type: str) -> List[Dict[str, Any
 def index_document(document_id: uuid.UUID, file_path: str, file_name: str) -> Tuple[int, int]:
     """Parse, chunk, embed, and index a document into Qdrant."""
     init_qdrant()
+    embed_model, size, collection_name = get_embed_config()
     
     # 1. Extract text
     pages = extract_text_from_file(file_path, file_name.split(".")[-1])
@@ -129,7 +172,7 @@ def index_document(document_id: uuid.UUID, file_path: str, file_name: str) -> Tu
     # 4. Insert into Qdrant
     vector_store = QdrantVectorStore(
         client=qdrant_client_instance,
-        collection_name="document_chunks"
+        collection_name=collection_name
     )
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
     
@@ -145,8 +188,9 @@ def index_document(document_id: uuid.UUID, file_path: str, file_name: str) -> Tu
 def delete_document_vectors(document_id: uuid.UUID):
     """Delete document vector points from Qdrant."""
     init_qdrant()
+    embed_model, size, collection_name = get_embed_config()
     qdrant_client_instance.delete(
-        collection_name="document_chunks",
+        collection_name=collection_name,
         points_filter=Filter(
             must=[
                 FieldCondition(
@@ -160,10 +204,11 @@ def delete_document_vectors(document_id: uuid.UUID):
 def retrieve_context(query_text: str) -> List[Dict[str, Any]]:
     """Retrieve relevant chunks from Qdrant with details."""
     init_qdrant()
+    embed_model, size, collection_name = get_embed_config()
     
     vector_store = QdrantVectorStore(
         client=qdrant_client_instance,
-        collection_name="document_chunks"
+        collection_name=collection_name
     )
     index = VectorStoreIndex.from_vector_store(
         vector_store,
