@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { MessageSquare, Send, Plus, Trash2, User as UserIcon, AlertTriangle, BookOpen, ArrowUp, ChevronLeft } from 'lucide-react';
+import { MessageSquare, Plus, Trash2, AlertTriangle, BookOpen, ArrowUp, ChevronLeft } from 'lucide-react';
 import client, { API_URL } from '../../api/client';
 import { Conversation, Message, Citation } from '../../types';
 
