@@ -108,6 +108,12 @@ qdrant_client_instance = qdrant_client.QdrantClient(
     api_key=settings.QDRANT_API_KEY if settings.QDRANT_API_KEY else None
 )
 
+async_qdrant_client_instance = qdrant_client.AsyncQdrantClient(
+    url=settings.QDRANT_URL,
+    api_key=settings.QDRANT_API_KEY if settings.QDRANT_API_KEY else None
+)
+
+
 # Setup Embeddings lazily to avoid heavy torch/HuggingFace imports on startup
 _embed_model = None
 _vector_size = 384
@@ -303,7 +309,7 @@ def delete_document_vectors(document_id: uuid.UUID):
         )
     )
 
-def retrieve_context(query_text: str) -> List[Dict[str, Any]]:
+async def retrieve_context(query_text: str) -> List[Dict[str, Any]]:
     """Retrieve relevant chunks from Qdrant with details."""
     # Check if the query is a simple greeting to avoid retrieving unrelated sources
     cleaned = query_text.lower().strip("?!. ")
@@ -316,6 +322,7 @@ def retrieve_context(query_text: str) -> List[Dict[str, Any]]:
     
     vector_store = QdrantVectorStore(
         client=qdrant_client_instance,
+        aclient=async_qdrant_client_instance,
         collection_name=collection_name
     )
     index = VectorStoreIndex.from_vector_store(
@@ -325,7 +332,7 @@ def retrieve_context(query_text: str) -> List[Dict[str, Any]]:
     retriever = index.as_retriever(similarity_top_k=5)
     
     start_time = time.time()
-    nodes = retriever.retrieve(query_text)
+    nodes = await retriever.aretrieve(query_text)
     latency_ms = int((time.time() - start_time) * 1000)
     
     sources = []
@@ -342,6 +349,7 @@ def retrieve_context(query_text: str) -> List[Dict[str, Any]]:
             "latency_ms": latency_ms
         })
     return sources
+
 
 def build_prompts(query_text: str, sources: List[Dict[str, Any]]) -> Tuple[str, str]:
     """Build grounded system and user prompts."""

@@ -148,7 +148,7 @@ async def websocket_chat_endpoint(
                 
                 # A. Retrieve grounded context chunks
                 retrieval_start_time = time.time()
-                sources = retrieve_context(query_text)
+                sources = await retrieve_context(query_text)
                 retrieval_latency_ms = int((time.time() - retrieval_start_time) * 1000)
                 
                 # B. Save user message to database
