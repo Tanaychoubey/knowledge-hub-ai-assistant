@@ -238,6 +238,7 @@ export default function ChatWindow() {
     // Clear stream buffers
     setStreamText('');
     setStreamCitations([]);
+    setIsStreaming(true);
     
     // Send via socket
     socketRef.current.send(
@@ -253,6 +254,7 @@ export default function ChatWindow() {
     setError('');
     setStreamText('');
     setStreamCitations([]);
+    setIsStreaming(true);
     
     socketRef.current.send(
       JSON.stringify({

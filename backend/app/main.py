@@ -1,6 +1,9 @@
 import time
 import uuid
 import asyncio
+import nest_asyncio
+nest_asyncio.apply()
+
 from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func

@@ -1,13 +1,11 @@
-import time
 import uuid
 import traceback
-from app.worker.celery_app import celery
+from datetime import datetime
 from app.core.database import SessionLocal
 from app.models.document import Document
 from app.models.job import ProcessingJob
 from app.services.rag import index_document
 
-@celery.task(name="app.worker.tasks.process_document_task")
 def process_document_task(document_id_str: str):
     document_id = uuid.UUID(document_id_str)
     db = SessionLocal()
@@ -22,7 +20,6 @@ def process_document_task(document_id_str: str):
     # 2. Update document state and init processing job
     document.status = "PROCESSING"
     
-    from datetime import datetime
     job = ProcessingJob(
         document_id=document_id,
         status="RUNNING",

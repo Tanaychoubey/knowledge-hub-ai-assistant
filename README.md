@@ -82,15 +82,8 @@ uvicorn app.main:app --reload
 ```
 The server will start on `http://localhost:8000`.
 
-### 4. Start Celery Background Worker
-Open a new terminal window in the backend directory and launch the worker:
-```bash
-cd backend
-celery -A app.worker.celery_app.celery worker --loglevel=info --pool=solo
-```
-
-### 5. Launch React Frontend Client
-Open a third terminal window, navigate to the frontend directory, install npm packages, and start the development server:
+### 4. Launch React Frontend Client
+Open a second terminal window, navigate to the frontend directory, install npm packages, and start the development server:
 ```bash
 cd frontend
 npm install

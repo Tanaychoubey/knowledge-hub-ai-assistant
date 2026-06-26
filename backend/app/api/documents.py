@@ -10,7 +10,7 @@ from app.api.deps import get_current_user, get_current_active_admin
 from app.models.user import User
 from app.models.document import Document
 from app.schemas.document import DocumentResponse
-from app.worker.tasks import process_document_task
+from app.services.document_processor import process_document_task
 from app.services.rag import delete_document_vectors
 
 router = APIRouter()

@@ -118,8 +118,18 @@ def get_embed_config():
     if _embed_model is not None:
         return _embed_model, _vector_size, _collection_name
         
+    # Check for direct HF Inference API key first to bypass blocked Gemini accounts
+    if settings.HF_API_KEY:
+        from llama_index.embeddings.huggingface_api import HuggingFaceInferenceAPIEmbedding
+        _embed_model = HuggingFaceInferenceAPIEmbedding(
+            model_name="BAAI/bge-small-en-v1.5",
+            token=settings.HF_API_KEY
+        )
+        _vector_size = 384
+        _collection_name = "document_chunks_huggingface_api"
+        
     # Check for direct API key presence first to bypass loading heavy HuggingFace models on serverless/free tiers
-    if settings.GEMINI_API_KEY:
+    elif settings.GEMINI_API_KEY:
         if settings.GEMINI_API_KEY.startswith("AQ."):
             _embed_model = AQGeminiEmbedding(
                 api_key=settings.GEMINI_API_KEY,
@@ -305,6 +315,12 @@ def delete_document_vectors(document_id: uuid.UUID):
 
 def retrieve_context(query_text: str) -> List[Dict[str, Any]]:
     """Retrieve relevant chunks from Qdrant with details."""
+    # Check if the query is a simple greeting to avoid retrieving unrelated sources
+    cleaned = query_text.lower().strip("?!. ")
+    greetings = {"hi", "hello", "hey", "good morning", "good afternoon", "good evening", "greetings", "yo", "sup", "hola", "thanks", "thank you"}
+    if cleaned in greetings:
+        return []
+        
     init_qdrant()
     embed_model, size, collection_name = get_embed_config()
     
