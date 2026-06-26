@@ -11,6 +11,96 @@ from llama_index.core.node_parser import SentenceSplitter
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 
 from app.core.config import settings
+from llama_index.core.embeddings import BaseEmbedding
+from llama_index.core.llms import CustomLLM, CompletionResponse, CompletionResponseGen, LLMMetadata
+from llama_index.core.llms.callbacks import llm_completion_callback
+from pydantic import PrivateAttr
+
+class AQGeminiEmbedding(BaseEmbedding):
+    _client: Any = PrivateAttr()
+    _model_name: str = PrivateAttr()
+
+    def __init__(self, api_key: str, model_name: str = "models/text-embedding-004", **kwargs):
+        super().__init__(**kwargs)
+        self._model_name = model_name
+        from google import genai
+        self._client = genai.Client(
+            api_key=api_key,
+            http_options={
+                'headers': {'Authorization': f'Bearer {api_key}'}
+            }
+        )
+
+    def _get_query_embedding(self, query: str) -> list[float]:
+        response = self._client.models.embed_content(
+            model=self._model_name,
+            contents=query
+        )
+        return response.embeddings[0].values
+
+    def _get_text_embedding(self, text: str) -> list[float]:
+        response = self._client.models.embed_content(
+            model=self._model_name,
+            contents=text
+        )
+        return response.embeddings[0].values
+
+    def _get_text_embeddings(self, texts: list[str]) -> list[list[float]]:
+        response = self._client.models.embed_content(
+            model=self._model_name,
+            contents=texts
+        )
+        return [emb.values for emb in response.embeddings]
+
+    async def _aget_query_embedding(self, query: str) -> list[float]:
+        return self._get_query_embedding(query)
+
+    async def _aget_text_embedding(self, text: str) -> list[float]:
+        return self._get_text_embedding(text)
+
+
+class AQGeminiLLM(CustomLLM):
+    _client: Any = PrivateAttr()
+    _model: str = PrivateAttr()
+
+    def __init__(self, api_key: str, model: str = "gemini-1.5-flash", **kwargs):
+        super().__init__(**kwargs)
+        self._model = model
+        from google import genai
+        self._client = genai.Client(
+            api_key=api_key,
+            http_options={
+                'headers': {'Authorization': f'Bearer {api_key}'}
+            }
+        )
+
+    @property
+    def metadata(self) -> LLMMetadata:
+        return LLMMetadata(
+            context_window=1000000,
+            num_output=8192,
+            model_name=self._model,
+        )
+
+    @llm_completion_callback()
+    def complete(self, prompt: str, **kwargs: Any) -> CompletionResponse:
+        response = self._client.models.generate_content(
+            model=self._model,
+            contents=prompt,
+        )
+        return CompletionResponse(text=response.text)
+
+    @llm_completion_callback()
+    def stream_complete(self, prompt: str, **kwargs: Any) -> CompletionResponseGen:
+        response = self._client.models.generate_content_stream(
+            model=self._model,
+            contents=prompt,
+        )
+        text = ""
+        for chunk in response:
+            text += chunk.text
+            yield CompletionResponse(text=text, delta=chunk.text)
+
 
 # Initialize Qdrant Client supporting local container or cloud services
 qdrant_client_instance = qdrant_client.QdrantClient(
@@ -30,11 +120,17 @@ def get_embed_config():
         
     # Check for direct API key presence first to bypass loading heavy HuggingFace models on serverless/free tiers
     if settings.GEMINI_API_KEY:
-        from llama_index.embeddings.gemini import GeminiEmbedding
-        _embed_model = GeminiEmbedding(
-            api_key=settings.GEMINI_API_KEY,
-            model_name="models/embedding-001"
-        )
+        if settings.GEMINI_API_KEY.startswith("AQ."):
+            _embed_model = AQGeminiEmbedding(
+                api_key=settings.GEMINI_API_KEY,
+                model_name="models/text-embedding-004"
+            )
+        else:
+            from llama_index.embeddings.gemini import GeminiEmbedding
+            _embed_model = GeminiEmbedding(
+                api_key=settings.GEMINI_API_KEY,
+                model_name="models/embedding-001"
+            )
         _vector_size = 768
         _collection_name = "document_chunks_gemini"
         
@@ -84,8 +180,11 @@ def get_llm():
     provider = settings.LLM_PROVIDER.lower()
     
     if provider == "gemini" and settings.GEMINI_API_KEY:
-        from llama_index.llms.gemini import Gemini
-        return Gemini(api_key=settings.GEMINI_API_KEY, model="models/gemini-1.5-flash")
+        if settings.GEMINI_API_KEY.startswith("AQ."):
+            return AQGeminiLLM(api_key=settings.GEMINI_API_KEY, model="gemini-1.5-flash")
+        else:
+            from llama_index.llms.gemini import Gemini
+            return Gemini(api_key=settings.GEMINI_API_KEY, model="models/gemini-1.5-flash")
     
     elif provider == "ollama":
         from llama_index.llms.ollama import Ollama
