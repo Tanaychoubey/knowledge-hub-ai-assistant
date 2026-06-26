@@ -4,6 +4,16 @@ A production-grade, enterprise-scale SaaS application designed for document inge
 
 ---
 
+## 🌐 Live Deployments
+
+*   **Frontend (Vercel)**: [tanay-rag-assistant.vercel.app](https://tanay-rag-assistant.vercel.app/)
+*   **Backend (Render)**: [rag-assistant-huw6.onrender.com](https://rag-assistant-huw6.onrender.com)
+
+> [!NOTE]
+> The backend is hosted on a Render Free Instance which spins down after periods of inactivity. The initial request or chat query can take 50 seconds or more to respond while the instance starts up.
+
+---
+
 ## 🏗️ 1. High-Level System Architecture
 
 The project features a decoupled, multi-service setup optimized for local development and containerized service bindings:
